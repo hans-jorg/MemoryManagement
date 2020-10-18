@@ -24,34 +24,131 @@
  */
 
 #ifndef NULL
-#define NULL (void *)0
+#define NULL (0)
 #endif
 
-typedef struct hdr {
-    struct hdr      *ptr;
-    unsigned int    size;
+#if defined(DEBUG) || defined(TEST)
+#include <stdio.h>
+#endif
+/**
+ *  @brief  header structure for each block
+ *
+ *  @note   next points to the next free block, otherwise it is NULL
+ */
+typedef struct header {
+    struct header  *next;
+    unsigned        used:1;             // 1 bit for used/free flag
+    unsigned        region:2;           // 2 bits for region
+    unsigned        size:29;            // 29 bits for size (=512 MBytes)
 } HEADER;
 
+/**
+ *  @brief  Region definition
+ *
+ *  @note   Definition of a heap area
+ */
 
-#ifdef MEM_LINKERINIT
-/*  Symbols defined in the linker script
- * _heapstart and _heapend must be at the first and last byte of the heap, respectively */
-extern HEADER _heapstart;       /*!< first byte allocated to the heap */
-extern HEADER _heapend;         /*!< last byte allocated to the heap */
-#endif
-
-/*  Must be initialized in MemInit to point to first and last byte
- * of heap, respectively */
-static HEADER *heapstart;       /*!< first byte allocated to the heap */
-static HEADER *heapend;         /*!< last byte allocated to the heap */
+typedef struct region {
+    HEADER  *start;
+    HEADER  *end;
+    HEADER  *free;
+    int     usedblocks;
+    int     usedbytes;
+    int     freeblocks;
+    int     freebytes;
+    int     memleft;
+} REGION;
 
 /**
- *  @brief  Free list
+ *  @brief  Data structure for allocation statistics
  */
-///@{}
-static HEADER   *frhd;      /* pointer to free list */
-static short    memleft;    /* memory left */
-///@}
+
+struct MemStats {
+    int freebytes;
+    int usedbytes;
+    int freeblocks;
+    int usedblocks;
+    int memleft;
+    int largestused;
+    int smallestused;
+    int largestfree;
+    int smallestfree;
+};
+
+/**
+ *  @brief  Function prototypes
+ */
+
+void MemAddRegion(int region, void *area, int size);
+void MemInit(void *area, int size);
+void MemFree(void *p);
+void *MemAlloc(int nb, int index);
+void MemStats(struct MemStats *stats, int region);
+
+
+/**
+ *  @brief  Region definition
+ *
+ *  @note   Heap information loaded by MemInit
+ */
+REGION Regions[4] = {
+    { .start = 0, .end = 0 },
+    { .start = 0, .end = 0 },
+    { .start = 0, .end = 0 },
+    { .start = 0, .end = 0 }
+};
+
+
+/**
+ *  @brief  Add a region to the pool
+ *
+ *  @note   Area must be aligned to an int
+ */
+void
+MemAddRegion( int region, void *area, int size) {
+REGION *r;
+
+    r = &Regions[region];
+
+    // If already initialized, do nothing
+    if( r->start )
+        return;
+
+    r->start = area;
+    r->end   = (HEADER *)((char *) area + size);
+    r->free  = area;
+    r->free->next = NULL;
+    r->free->size = size/sizeof(HEADER)-1;
+    r->free->used = 0;
+    r->memleft = r->free->size;
+}
+
+
+/**
+ *  @brief  MemInit
+ *
+ *  @note   Initializes heap info
+ *
+ *  @note   There are two versions. A version without parameters, that uses
+ *          symbols defined by the linker. Another one, with explicit parameters.
+ *          The preprocessor symbol MEM_LINKERINIT chooses one
+ */
+#ifdef MEM_LINKERINIT
+void MemInit(void) {
+
+int size = (char *) &_heapend - char *) &_heapstart;
+
+    MemAddRegion( 0, &_heapstart, size);
+
+}
+#else
+void MemInit(void *area, int size) {
+
+    MemAddRegion( 0, area, size);
+
+}
+#endif
+
 
 /**
  *  @brief  MemFree
@@ -60,71 +157,98 @@ static short    memleft;    /* memory left */
  *          Where possible, make contiguous blocks of free memory.
  *          Assumes that 0 is not a valid address for allocation. Also,
  *          MemInit() must be called prior to using either MemFree() or MemAlloc();
- *          otherwise, the free list will be null.
  */
+void MemFree(void *p) {
+HEADER *block, *prev, *f;
+REGION *r;
 
-void MemFree(void *ap) {
+    if( !p )
+        return;
 
-    HEADER *nxt, *prev, *f;
-    f = (HEADER *)ap - 1;   /* Point to header of block being returned. */
-    memleft += f->size;
+    f = (HEADER *)p - 1;                /* Point to header of block being returned. */
+#ifdef DEBUG
+    printf("Freeing element at %p with %d elements and area at %p\n",f,f->size,p);
+#endif
 
-    /*  frhd is never null unless i_alloc() wasn't called to initialize package. */
+    // Already free
+    if( !f->used )
+        return;
 
-    if (frhd > f) {
+    // Get region used for allocation
+    r = &Regions[f->region];
 
-        /* Free-space head is higher up in memory than returnee. */
+    r->memleft += f->size;
 
-        nxt = frhd;     /* old head */
-        frhd = f;   /* new head */
-        prev = f + f->size;     /* right after new head */
+    /*
+     * There are 4 case to consider:
+     *   Previous |  Next
+     *    Busy    |  Busy     : Just add to free list
+     *    Free    |  Busy     : Add size to the previous one
+     *    Busy    |  Free     : Add size of the next one, remove it from list, add this to list
+     *    Free    |  Free     : Add size of the next one and this one to previous,
+     *                          remove the next one from free list
+     *
+     *  The are the limit cases to consider, start and end of area
+     */
+    if (f < r->free ) {
+        puts("Por aqui");
+        block = r->free;                 /* Old head */
+        r->free = f;                     /* New head */
+        prev = f + f->size;             /* Right after new head */
 
-        if (prev==nxt)  {   /* Old and new are contiguous. */
-            f->size += nxt->size;
-            f->ptr = nxt->ptr;  /* Form one block. */
+        if (prev == block) {            /* Old and new are contiguous. */
+            f->size += block->size;
+            f->next = block->next;         /* Form one block. */
+        } else {
+            f->next = block;
         }
-        else {
-            f->ptr = nxt;
-        }
-    return;
+        f->used = 0;
+        return;
     }
 
-    /*  Otherwise, current free-space head is lower in memory. Walk down free-space list
-     * looking for the block being returned. If the next pointer points past the block,
-     * make a new entry and link it. If next pointer plus its size points to the block,
-     * form one contiguous block. */
+    /*
+     * Otherwise, current free-space head is lower in memory. Walk down
+     * free-space list looking for the block being returned. If the next pointer
+     * points past the block, make a new entry and link it. If next pointer plus
+     * its size points to the block, form one contiguous block.
+     */
 
-    nxt = frhd;
-    for (nxt=frhd; nxt && nxt < f; prev=nxt,nxt=nxt->ptr) {
-        if (nxt+nxt->size == f) {
-            nxt->size += f->size;   /* They're contiguous. */
-            f = nxt + nxt->size;    /* Form one block. */
-            if (f==nxt->ptr) {
-                /* The new, larger block is contiguous to the next free block, so form a
-                 * larger block.There's no need to continue this checking since if the block
-                 * following this free one were free, the two would already have been combined. */
-                nxt->size += f->size;
-                nxt->ptr = f->ptr;
+    block = r->free;
+    for (block=r->free; block && block < f; prev=block,block=block->next) {
+        if (block+block->size == f) {
+            block->size += f->size;     /* They're contiguous. */
+            f = block + block->size;     /* Form one block. */
+            if (f==block->next) {
+                /*
+                 * The new, larger block is contiguous to the next free block,
+                 * so form a larger block. There's no need to continue this checking
+                 * since if the block following this free one
+                 * were free, the two would already have been combined.
+                 */
+                block->size += f->size;
+                block->next = f->next;
+                block->used = 0;
             }
             return;
         }
     }
 
-    /*  The address of the block being returned is greater than one in the free queue (nxt)
-     * or the end of the queue was reached. If at end, just link to the end of the queue.
-     * Therefore, nxt is null or points to a block higher up in memory than the one being
-     * returned. */
-
-    prev->ptr = f;              /* link to queue */
-    prev = f + f->size;         /* right after space to free */
-    if (prev == nxt) {          /* 'f' and 'nxt' are contiguous. */
-        f->size += nxt->size;
-        f->ptr = nxt->ptr;      /* Form a larger, contiguous block. */
+    /*
+     * The address of the block being returned is greater than one in
+     * the free queue (block) or the end of the queue was reached.
+     * If at end, just link to the end of the queue.
+     * Therefore, block is null or points to a block higher up in memory
+     * than the one being returned.
+     */
+    prev->next = f;                 /* link to queue */
+    prev = f + f->size;             /* right after space to free */
+    if (prev == block) {            /* 'f' and 'block' are contiguous. */
+        f->size += block->size;
+        f->next = block->next;         /* Form a larger, contiguous block. */
+    } else {
+        f->next = block;
     }
-    else {
-        f->ptr = nxt;
-    }
-
+    f->used = 0;
     return;
 }
 
@@ -137,92 +261,58 @@ void MemFree(void *ap) {
  *  @note
  *
  */
+void *MemAlloc(int nb, int region) {
+HEADER *block, *prev;
+REGION *r;
+int    nelems;
 
-void *MemAlloc(int nbytes) {  /* bytes to allocate */
-HEADER *nxt, *prev;
-int         nunits;
-nunits = (nbytes+sizeof(HEADER)-1) / sizeof(HEADER) + 1;
+    /* Round to a multiple of sizeof(HEADER) */
+    nelems = (nb+sizeof(HEADER)-1)/sizeof(HEADER) + 1;
 
-    /* Allocate the space requested plus space for the header of the block. Search the free-
-     * space queue for a block that's large enough. If block is larger than needed, break into
-     * two pieces and allocate the portion higher up in memory. Otherwise, just allocate the
-     * entire block. */
+#ifdef DEBUG
+    printf("Allocating %d bytes (=%d elements)\n",nb,nelems);
+#endif
 
-    for (prev=NULL,nxt=frhd; nxt; nxt = nxt->ptr) {
-        if (nxt->size >= nunits) {      /* big enough */
-            if (nxt->size > nunits) {
-                nxt->size -= nunits;    /* Allocate tell end. */
-                nxt += nxt->size;
-                nxt->size = nunits;     /* nxt now == pointer to be alloc'd. */
+    r = &Regions[region];
+
+    /*
+     * Allocate the space requested plus space for the header of the block.
+     * Search the free-space queue for a block that's large enough.
+     * If block is larger than needed, break into two pieces
+     * and allocate the portion higher up in memory.
+     * Otherwise, just allocate the entire block.
+     */
+    for (prev=NULL,block=r->free; block!=NULL; block = block->next) {
+        /* First fit */
+        if ( nelems <= block->size ) {        /* Big enough */
+            if ( nelems < block->size ) {
+                block->size -= nelems;         /* Allocate tell end. */
+                block->used = 0;
+                block->next = NULL;         /* Mark as occupied */
+                block += block->size;
+                block->size = nelems;         /* block now == pointer to be alloc'd. */
+                block->used = 1;
             } else {
-                if (prev==NULL)
-                    frhd = nxt->ptr;
-                else
-                    prev->ptr = nxt->ptr;
+                if (prev==NULL) {
+                    r->free = block->next;
+                } else {
+                    prev->next = block->next;
+                }
             }
-            memleft -= nunits;
+            r->memleft -= nelems;
 
-            /* Return a pointer past the header to the actual space requested. */
-            return((char *)(nxt+1));
+            /*
+             * Return a pointer past the header to the actual space requested.
+             */
+            return((void *)(block+1));
         }
     }
 
-    return(NULL);
+    /*
+     * Area not found
+     */
+    return NULL;
 }
-
-/**
- *  @brief  MemInit
- *
- *  @note   Initializes heap info
- *
- *  @note   There are two versions. A version without parameters, that uses
- *          symbols defined by the linker. Another one, with explicit parameters.
- *          The preprocessor symbol MEM_LINKERINIT chooses one
- *
- *  @note   The area must be word aligned
- */
-
-#ifdef MEM_LINKERINIT
-void MemInit(void) {
-
-    /* Initialize the free list */
-    frhd = &_heapstart;
-    frhd->ptr = NULL;
-    frhd->size = ((char *)&_heapend - (char *)&_heapstart) / sizeof(HEADER);
-    memleft = frhd->size;   /* initial size in four-byte units */
-}
-#else
-void MemInit(void *area, int size) {
-
-    heapstart = (HEADER *) area;
-    heapend   = (HEADER *) ((char *) area + size - 1);
-    /* Initialize the free list */
-    frhd = area;
-    frhd->ptr = NULL;
-    frhd->size = size / sizeof(HEADER);
-    memleft = frhd->size;   /* initial size in four-byte units */
-}
-#endif
-
-
-/**
- *  @brief  Data structure for allocation statistics
- */
-
-struct MemStats {
-    int freebytes;
-    int usedbytes;
-    int freeblocks;
-    int usedblocks;
-    int memleft;
-#if 0
-    // Not yet
-    int largestused;
-    int smallestused;
-    int largestfree;
-    int smallestfree;
-#endif
-};
 
 
 /**
@@ -230,35 +320,47 @@ struct MemStats {
  *
  *  @note   Delivers allocation information
  */
-void MemStats(struct MemStats *stats) {
+void MemStats(struct MemStats *stats, int region) {
+REGION *r;
 HEADER *p;
 
-    stats->memleft     = memleft;
+    r = &Regions[region];
+
+    stats->memleft     = r->memleft;
     stats->freeblocks  = 0;
     stats->freebytes   = 0;
     stats->usedblocks  = 0;
     stats->usedbytes   = 0;
+    stats->largestused = 0;
+    stats->smallestused= 1000000;
+    stats->largestfree = 0;
+    stats->smallestfree= 1000000;
 
-    for(p=frhd; p; p=p->ptr) {
+    if( !r->free )
+        return;
+
+    for(p=r->free;p;p=p->next) {
         stats->freeblocks++;
         stats->freebytes += p->size*sizeof(HEADER);
+        if( p->size > stats->largestfree )
+            stats->largestfree = p->size;
+        if( p->size < stats->smallestfree )
+            stats->smallestfree = p->size;
     }
 
-    for(p=heapstart; (p < heapend)&&(p->size>0); p=p+p->size) {
-        stats->usedblocks++;
-        stats->usedbytes += p->size*sizeof(HEADER);
+    for(p=r->start;(p < r->end)&&(p->size>0);p=p+p->size) {
+        if( p->used ) {
+            stats->usedblocks++;
+            stats->usedbytes += p->size*sizeof(HEADER);
+            if( p->size > stats->largestused )
+                stats->largestused = p->size;
+            if( p->size < stats->smallestused )
+                stats->smallestused = p->size;
+        }
     }
-    // Counted in the last loop
-    stats->usedblocks -= stats->freeblocks;
-    stats->usedbytes  -= stats->freebytes;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////////////
-#define TEST
-
-#ifdef TEST
-#include <stdio.h>
+#if defined(DEBUG) || defined(TEST)
 
 /**
  *  @brief  Memory List
@@ -266,21 +368,31 @@ HEADER *p;
  *  @note   List all memory blocks, including size and status
  *
  */
-void MemList() {
+void MemList(int region) {
 int i;
 HEADER *p;
+REGION *r;
 
-    for(i=0,p=heapstart;(p<heapend)&&(p->size>0);i++,p=p+p->size) {
-        printf("B%02d : %d @%p (next=%p)\n",i,
-                    (int) (p->size*sizeof(HEADER)),p,p->ptr);
+    r = &Regions[region];
+
+    for(i=0,p=r->start;(p<r->end)&&(p->size>0);i++,p=p+p->size) {
+        printf("B%02d (%c): %d @%p (next=%p)\n",i,p->used?'U':'F',
+                    (int) (p->size*sizeof(HEADER)),p,p->next);
     }
     putchar('\n');
 }
 
+#endif
+
+//////////////////////// TEST  ///////////////////////////////////////////////////////////////////
+
+#ifdef TEST
+#include <stdio.h>
+
 #define PRINTSTATS(MSG,STATS)  \
             do { \
                 puts(MSG); \
-                MemStats(&STATS); \
+                MemStats(&STATS,0); \
                 printf("Free blocks      = %d\n",STATS.freeblocks);\
                 printf("Free bytes       = %d\n",STATS.freebytes);\
                 printf("Used blocks      = %d\n",STATS.usedblocks);\
@@ -301,32 +413,31 @@ struct MemStats stats;
 
     MemInit(buffer,BUFFERSIZE);
     PRINTSTATS("Inicializado",stats);
-    MemList();
+    MemList(0);
 
-    p1 = MemAlloc(10);
+    p1 = MemAlloc(10,0);
     PRINTSTATS("Alocacao 1",stats);
-    MemList();
+    MemList(0);
 
-    p2 = MemAlloc(10);
+    p2 = MemAlloc(10,0);
     PRINTSTATS("Alocacao 2",stats);
-    MemList();
+    MemList(0);
 
-    p3 = MemAlloc(10);
+    p3 = MemAlloc(10,0);
     PRINTSTATS("Alocacao 3",stats);
-    MemList();
+    MemList(0);
 
     MemFree(p2);
     PRINTSTATS("Liberacao 2",stats);
-    MemList();
+    MemList(0);
 
     MemFree(p3);
     PRINTSTATS("Liberacao 3",stats);
-    MemList();
+    MemList(0);
 
     MemFree(p1);
     PRINTSTATS("Liberacao 3",stats);
-    MemList();
+    MemList(0);
 
 }
 #endif
-

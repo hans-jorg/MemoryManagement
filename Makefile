@@ -1,6 +1,6 @@
 
 PROGNAME=testmemmanager
-CFLAGS += -g -DDEBUG
+CFLAGS += -g -DTEST -DDEBUG
 
 
 $(PROGNAME): memmanager.o

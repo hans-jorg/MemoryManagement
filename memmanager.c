@@ -26,6 +26,8 @@
  *  @author Hans Schneebeli (updated version)
  */
 
+#include <stdint.h>
+
 /**
  *  @brief  NULL Pointer
  *
@@ -48,14 +50,21 @@
  *  @note   next points to the next free block, otherwise it is NULL
  *
  *  @note   Using bit fields. It will later be used in an embedded system
+ *
+ *  @note   Assumed unsigned it is 32 bits long
  */
 typedef struct header {
-    unsigned        used:1;             ///< 1 bit for used/free flag
-    unsigned        region:2;           ///< 2 bits for region
-    unsigned        size:29;            ///< 29 bits for size (=512 MBytes)
+    union {
+        uint32_t    word;
+        struct {
+            uint32_t    used:1;         ///< 1 bit for used/free flag
+            uint32_t    region:2;       ///< 2 bits for region
+            uint32_t    size:29;        ///< 29 bits for size (=512 MBytes)
+        };
+    };
     union {
         struct header  *next;           ///< Next free block
-        int             area[1];        ///< Place marker
+        uint32_t        area[1];        ///< Place marker
     };
 } HEADER;
 
@@ -69,7 +78,7 @@ typedef struct region {
     HEADER  *start;                     ///< Start address of this heap
     HEADER  *end;                       ///< End address of this heap
     HEADER  *free;                      ///< Pointer to first free block (Free list)
-    int     memleft;                    ///< Free area in sizeof(HEADER) units
+    int32_t  memleft;                   ///< Free area in sizeof(HEADER) units
 } REGION;
 
 /**
@@ -77,26 +86,26 @@ typedef struct region {
  */
 
 typedef struct memstats {
-    int freebytes;                      ///< Size (in bytes) of total free area
-    int usedbytes;                      ///< Size (in bytes) of total used area
-    int freeblocks;                     ///< Number of free blocks
-    int usedblocks;                     ///< Number of used blocks
-    int memleft;                        ///< Should be the same of freebytes
-    int largestused;                    ///< Largest used block
-    int smallestused;                   ///< Smalles used block
-    int largestfree;                    ///< Largest free block
-    int smallestfree;                   ///< Smalles free block
+    int32_t freebytes;                      ///< Size (in bytes) of total free area
+    int32_t usedbytes;                      ///< Size (in bytes) of total used area
+    int32_t freeblocks;                     ///< Number of free blocks
+    int32_t usedblocks;                     ///< Number of used blocks
+    int32_t memleft;                        ///< Should be the same of freebytes
+    int32_t largestused;                    ///< Largest used block
+    int32_t smallestused;                   ///< Smalles used block
+    int32_t largestfree;                    ///< Largest free block
+    int32_t smallestfree;                   ///< Smalles free block
 } MEMSTATS;
 
 /**
  *  @brief  Function prototypes
  */
 
-void MemAddRegion( int region, void *area, int size );
-void MemInit( void *area, int size) ;
+void MemAddRegion( uint32_t region, void *area, uint32_t size );
+void MemInit( void *area, uint32_t size) ;
 void MemFree( void *p );
-void *MemAlloc( int nb, int index );
-void MemStats( MEMSTATS *stats, int region );
+void *MemAlloc( uint32_t nb, uint32_t index );
+void MemStats( MEMSTATS *stats, uint32_t region );
 
 
 /**
@@ -115,10 +124,10 @@ REGION Regions[4] = {
 /**
  *  @brief  Add a region to the pool
  *
- *  @note   Area must be aligned to an int
+ *  @note   Area must be aligned to an uint32_t
  */
 void
-MemAddRegion( int region, void *area, int size) {
+MemAddRegion( uint32_t region, void *area, uint32_t size) {
 REGION *r;
 
     r = &Regions[region];
@@ -149,13 +158,13 @@ REGION *r;
 #ifdef MEM_LINKERINIT
 void MemInit(void) {
 
-int size = (char *) &_heapend - char *) &_heapstart;
+uint32_t size = (char *) &_heapend - char *) &_heapstart;
 
     MemAddRegion( 0, &_heapstart, size);
 
 }
 #else
-void MemInit(void *area, int size) {
+void MemInit(void *area, uint32_t size) {
 
     MemAddRegion( 0, area, size);
 
@@ -284,10 +293,10 @@ REGION *r;
  *          Otherwise, just allocate the entire block.
  *
  */
-void *MemAlloc(int nb, int region) {
+void *MemAlloc(uint32_t nb, uint32_t region) {
 HEADER *block, *prev;
 REGION *r;
-int    nelems;
+uint32_t    nelems;
 
     /* Round to a multiple of sizeof(HEADER) */
     nelems = (nb+sizeof(HEADER)-1)/sizeof(HEADER) + 1;
@@ -334,10 +343,10 @@ int    nelems;
  *
  *  @note   Delivers allocation information
  */
-void MemStats( MEMSTATS *stats, int region ) {
+void MemStats( MEMSTATS *stats, uint32_t region ) {
 REGION *r;
 HEADER *p;
-const int MAXBYTES = 1000000;   /* to avoid the inclusion of other headers */
+const uint32_t MAXBYTES = 1000000;   /* to avoid the inclusion of other headers */
 
     r = &Regions[region];
 
@@ -397,16 +406,16 @@ const int MAXBYTES = 1000000;   /* to avoid the inclusion of other headers */
  *  @note   List all memory blocks, including size and status
  *
  */
-void MemList(int region) {
-int i;
+void MemList(uint32_t region) {
+uint32_t i;
 HEADER *p;
 REGION *r;
 
     r = &Regions[region];
 
     for(i=0,p=r->start;(p<r->end)&&(p->size>0);i++,p=p+p->size) {
-        printf("B%02d (%c): %d @%p (next=%p)\n",i,p->used?'U':'F',
-                    (int) (p->size*sizeof(HEADER)),p,p->next);
+        printf("B%02d (%c): %u @%p (next=%p)\n",i,p->used?'U':'F',
+                    (uint32_t) (p->size*sizeof(HEADER)),p,p->next);
     }
     putchar('\n');
 }
@@ -435,15 +444,15 @@ void PrintStats(char *msg, MEMSTATS *stats ) {
 
 #define BUFFERSIZE 160
 
-static int buffer[(BUFFERSIZE+sizeof(int)-1)/sizeof(int)];
+static uint32_t buffer[(BUFFERSIZE+sizeof(uint32_t)-1)/sizeof(uint32_t)];
 
 
 int main(void) {
 char *p1,*p2,*p3;
 MEMSTATS stats;
 
-    printf("Size of block HEADER = %d\n",(int) sizeof(HEADER));
-    printf("Size of heap area    = %d\n",(int) BUFFERSIZE);
+    printf("Size of block HEADER = %u\n",(uint32_t) sizeof(HEADER));
+    printf("Size of heap area    = %u\n",(uint32_t) BUFFERSIZE);
 
     MemInit(buffer,BUFFERSIZE);
     MemStats(&stats,0);

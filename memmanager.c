@@ -6,27 +6,31 @@
  * Programmers: Les Aldridge, Travis I. Seay
  */
 
+#ifndef NULL
 #define NULL (void *)0
+#endif
 
 typedef struct hdr {
     struct hdr  *ptr;
     unsigned int    size;
 } HEADER;
 
-/*  Defined in the linker file. _heapstart is the first byte allocated to the heap; _heapend
-is the last. */
+/*  Defined in the linker file. _heapstart is the first byte allocated to the heap;
+ * _heapend is the last. */
 
 extern HEADER _heapstart, _heapend;
 
 extern void warm_boot(char *str);
 
-static HEADER   *frhd;
+static HEADER   *frhd;      /* pointer to free list */
 static short    memleft;    /* memory left */
 
-void free(char *ap)
+void free(void *ap)
 {
 
-    /*  Return memory to free list. Where possible, make contiguous blocks of free memory. (Assumes that 0 is not a valid address for allocation. Also, i_alloc() must be called prior to using either free() or malloc(); otherwise, the free list will be null.) */
+    /*  Return memory to free list. Where possible, make contiguous blocks of free memory.
+     * (Assumes that 0 is not a valid address for allocation. Also, i_alloc() must be called
+     * prior to using either free() or malloc(); otherwise, the free list will be null.) */
 
     HEADER *nxt, *prev, *f;
     f = (HEADER *)ap - 1;   /* Point to header of block being returned. */
@@ -52,7 +56,10 @@ void free(char *ap)
     return;
     }
 
-/*  Otherwise, current free-space head is lower in memory. Walk down free-space list looking for the block being returned. If the next pointer points past the block, make a new entry and link it. If next pointer plus its size points to the block, form one contiguous block. */
+    /*  Otherwise, current free-space head is lower in memory. Walk down free-space list
+     * looking for the block being returned. If the next pointer points past the block,
+     * make a new entry and link it. If next pointer plus its size points to the block,
+     * form one contiguous block. */
 
     nxt = frhd;
     for (nxt=frhd; nxt && nxt < f; prev=nxt,nxt=nxt->ptr)
@@ -64,7 +71,9 @@ void free(char *ap)
             if (f==nxt->ptr)
             {
 
-                /* The new, larger block is contiguous to the next free block, so form a larger block.There's no need to continue this checking since if the block following this free one were free, the two would already have been combined. */
+                /* The new, larger block is contiguous to the next free block, so form a
+                 * larger block.There's no need to continue this checking since if the block
+                 * following this free one were free, the two would already have been combined. */
 
                 nxt->size += f->size;
                 nxt->ptr = f->ptr;
@@ -73,14 +82,17 @@ void free(char *ap)
         }
     }
 
-/*  The address of the block being returned is greater than one in the free queue (nxt) or the end of the queue was reached. If at end, just link to the end of the queue. Therefore, nxt is null or points to a block higher up in memory than the one being returned. */
+    /*  The address of the block being returned is greater than one in the free queue (nxt)
+     * or the end of the queue was reached. If at end, just link to the end of the queue.
+     * Therefore, nxt is null or points to a block higher up in memory than the one being
+     * returned. */
 
-    prev->ptr = f;  /* link to queue */
-    prev = f + f->size;     /* right after space to free */
-    if (prev == nxt)    /* 'f' and 'nxt' are contiguous. */
+    prev->ptr = f;              /* link to queue */
+    prev = f + f->size;         /* right after space to free */
+    if (prev == nxt)            /* 'f' and 'nxt' are contiguous. */
     {
         f->size += nxt->size;
-        f->ptr = nxt->ptr;  /* Form a larger, contiguous block. */
+        f->ptr = nxt->ptr;      /* Form a larger, contiguous block. */
     }
     else
         f->ptr = nxt;
@@ -88,13 +100,18 @@ void free(char *ap)
     return;
 }
 
-char * malloc(int nbytes)   /* bytes to allocate */
+void * malloc(int nbytes)   /* bytes to allocate */
 {
     HEADER *nxt, *prev;
     int         nunits;
     nunits = (nbytes+sizeof(HEADER)-1) / sizeof(HEADER) + 1;
 
-    /* Change that divide to a shift (for speed) only if the compiler doesn't do it for you, you don't require portability, and you know that sizeof(HEADER) is a power of two. Allocate the space requested plus space for the header of the block. Search the free-space queue for a block that's large enough. If block is larger than needed, break into two pieces and allocate the portion higher up in memory. Otherwise, just allocate the entire block. */
+    /*  Change that divide to a shift (for speed) only if the compiler doesn't do it for you,
+     * you don't require portability, and you know that sizeof(HEADER) is a power of two.
+     * Allocate the space requested plus space for the header of the block. Search the free-
+     * space queue for a block that's large enough. If block is larger than needed, break into
+     * two pieces and allocate the portion higher up in memory. Otherwise, just allocate the
+     * entire block. */
 
     for (prev=NULL,nxt=frhd; nxt; nxt = nxt->ptr)
     {

@@ -25,8 +25,7 @@ extern void warm_boot(char *str);
 static HEADER   *frhd;      /* pointer to free list */
 static short    memleft;    /* memory left */
 
-void MemFree(void *ap)
-{
+void MemFree(void *ap) {
 
     /*  Return memory to free list. Where possible, make contiguous blocks of free memory.
      * (Assumes that 0 is not a valid address for allocation. Also, i_alloc() must be called
@@ -38,8 +37,7 @@ void MemFree(void *ap)
 
     /*  frhd is never null unless i_alloc() wasn't called to initialize package. */
 
-    if (frhd > f)
-    {
+    if (frhd > f) {
 
         /* Free-space head is higher up in memory than returnee. */
 
@@ -51,8 +49,9 @@ void MemFree(void *ap)
             f->size += nxt->size;
             f->ptr = nxt->ptr;  /* Form one block. */
         }
-        else
+        else {
             f->ptr = nxt;
+        }
     return;
     }
 
@@ -62,19 +61,14 @@ void MemFree(void *ap)
      * form one contiguous block. */
 
     nxt = frhd;
-    for (nxt=frhd; nxt && nxt < f; prev=nxt,nxt=nxt->ptr)
-    {
-        if (nxt+nxt->size == f)
-        {
+    for (nxt=frhd; nxt && nxt < f; prev=nxt,nxt=nxt->ptr) {
+        if (nxt+nxt->size == f) {
             nxt->size += f->size;   /* They're contiguous. */
             f = nxt + nxt->size;    /* Form one block. */
-            if (f==nxt->ptr)
-            {
-
+            if (f==nxt->ptr) {
                 /* The new, larger block is contiguous to the next free block, so form a
                  * larger block.There's no need to continue this checking since if the block
                  * following this free one were free, the two would already have been combined. */
-
                 nxt->size += f->size;
                 nxt->ptr = f->ptr;
             }
@@ -89,22 +83,21 @@ void MemFree(void *ap)
 
     prev->ptr = f;              /* link to queue */
     prev = f + f->size;         /* right after space to free */
-    if (prev == nxt)            /* 'f' and 'nxt' are contiguous. */
-    {
+    if (prev == nxt) {          /* 'f' and 'nxt' are contiguous. */
         f->size += nxt->size;
         f->ptr = nxt->ptr;      /* Form a larger, contiguous block. */
     }
-    else
+    else {
         f->ptr = nxt;
+    }
 
     return;
 }
 
-void *MemAlloc(int nbytes)   /* bytes to allocate */
-{
-    HEADER *nxt, *prev;
-    int         nunits;
-    nunits = (nbytes+sizeof(HEADER)-1) / sizeof(HEADER) + 1;
+void *MemAlloc(int nbytes) {  /* bytes to allocate */
+HEADER *nxt, *prev;
+int         nunits;
+nunits = (nbytes+sizeof(HEADER)-1) / sizeof(HEADER) + 1;
 
     /*  Change that divide to a shift (for speed) only if the compiler doesn't do it for you,
      * you don't require portability, and you know that sizeof(HEADER) is a power of two.
@@ -113,37 +106,32 @@ void *MemAlloc(int nbytes)   /* bytes to allocate */
      * two pieces and allocate the portion higher up in memory. Otherwise, just allocate the
      * entire block. */
 
-    for (prev=NULL,nxt=frhd; nxt; nxt = nxt->ptr)
-    {
-        if (nxt->size >= nunits)    /* big enough */
-        {
-            if (nxt->size > nunits)
-            {
+    for (prev=NULL,nxt=frhd; nxt; nxt = nxt->ptr) {
+        if (nxt->size >= nunits) {      /* big enough */
+            if (nxt->size > nunits) {
                 nxt->size -= nunits;    /* Allocate tell end. */
                 nxt += nxt->size;
                 nxt->size = nunits;     /* nxt now == pointer to be alloc'd. */
-            }
-            else
-            {
-                if (prev==NULL) frhd = nxt->ptr;
-                else prev->ptr = nxt->ptr;
+            } else {
+                if (prev==NULL)
+                    frhd = nxt->ptr;
+                else
+                    prev->ptr = nxt->ptr;
             }
             memleft -= nunits;
 
             /* Return a pointer past the header to the actual space requested. */
-
             return((char *)(nxt+1));
         }
     }
 
     /* This function that explains what catastrophe befell us before resetting the system. */
-
     warm_boot("Allocation Failed!");
     return(NULL);
 }
 
-void MemInit(void)
-{
+void MemInit(void) {
+
     frhd = &_heapstart;     /* Initialize the allocator. */
     frhd->ptr = NULL;
     frhd->size = ((char *)&_heapend - (char *)&_heapstart) / sizeof(HEADER);

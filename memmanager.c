@@ -25,7 +25,7 @@ extern void warm_boot(char *str);
 static HEADER   *frhd;      /* pointer to free list */
 static short    memleft;    /* memory left */
 
-void free(void *ap)
+void MemFree(void *ap)
 {
 
     /*  Return memory to free list. Where possible, make contiguous blocks of free memory.
@@ -100,7 +100,7 @@ void free(void *ap)
     return;
 }
 
-void * malloc(int nbytes)   /* bytes to allocate */
+void *MemAlloc(int nbytes)   /* bytes to allocate */
 {
     HEADER *nxt, *prev;
     int         nunits;
@@ -142,7 +142,7 @@ void * malloc(int nbytes)   /* bytes to allocate */
     return(NULL);
 }
 
-void i_alloc(void)
+void MemInit(void)
 {
     frhd = &_heapstart;     /* Initialize the allocator. */
     frhd->ptr = NULL;

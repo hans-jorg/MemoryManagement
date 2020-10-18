@@ -6,6 +6,9 @@ CFLAGS += -g -DTEST -DDEBUG
 $(PROGNAME): memmanager.o
 	$(CC) -o $@ $(CFLAGS) $^ $(LFLAGS) $(LIBS)
 
+run: $(PROGNAME)
+	./$(PROGNAME)
+
 docs:
 	doxygen
 

@@ -41,10 +41,13 @@
  *  @note   Using bit fields. It will later be used in an embedded system
  */
 typedef struct header {
-    struct header  *next;
     unsigned        used:1;             // 1 bit for used/free flag
     unsigned        region:2;           // 2 bits for region
     unsigned        size:29;            // 29 bits for size (=512 MBytes)
+    union {
+        struct header  *next;
+        int             area[1];        // Place marker
+    };
 } HEADER;
 
 /**
@@ -68,7 +71,7 @@ typedef struct region {
  *  @brief  Data structure for allocation statistics
  */
 
-struct MemStats {
+typedef struct memstats {
     int freebytes;
     int usedbytes;
     int freeblocks;
@@ -78,7 +81,7 @@ struct MemStats {
     int smallestused;
     int largestfree;
     int smallestfree;
-};
+} MemStats;
 
 /**
  *  @brief  Function prototypes
@@ -88,7 +91,7 @@ void MemAddRegion(int region, void *area, int size);
 void MemInit(void *area, int size);
 void MemFree(void *p);
 void *MemAlloc(int nb, int index);
-void MemStats(struct MemStats *stats, int region);
+void MemStatistics( MemStats *stats, int region);
 
 
 /**
@@ -324,7 +327,7 @@ int    nelems;
  *
  *  @note   Delivers allocation information
  */
-void MemStats(struct MemStats *stats, int region) {
+void MemStatistics(MemStats *stats, int region) {
 REGION *r;
 HEADER *p;
 const int MAXBYTES = 1000000;   /* to avoid the inclusion of other headers */
@@ -408,7 +411,7 @@ REGION *r;
 #ifdef TEST
 #include <stdio.h>
 
-void PrintStats(char *msg, struct MemStats *stats ) {
+void PrintStats(char *msg, MemStats *stats ) {
 
     puts(msg);
     printf("Free blocks      = %d\n",stats->freeblocks);
@@ -430,44 +433,44 @@ static int buffer[(BUFFERSIZE+sizeof(int)-1)/sizeof(int)];
 
 int main(void) {
 char *p1,*p2,*p3;
-struct MemStats stats;
+MemStats stats;
 
-    printf("Size of element HEADER = %d\n",(int) sizeof(HEADER));
-    printf("Size of heap area      = %d\n",(int) BUFFERSIZE);
+    printf("Size of block HEADER = %d\n",(int) sizeof(HEADER));
+    printf("Size of heap area    = %d\n",(int) BUFFERSIZE);
 
     MemInit(buffer,BUFFERSIZE);
-    MemStats(&stats,0);
-    PrintStats("Inicializado",&stats);
+    MemStatistics(&stats,0);
+    PrintStats("Inicialized",&stats);
     MemList(0);
 
     p1 = MemAlloc(10,0);
-    MemStats(&stats,0);
-    PrintStats("Alocacao 1",&stats);
+    MemStatistics(&stats,0);
+    PrintStats("Allocation #1",&stats);
     MemList(0);
 
     p2 = MemAlloc(10,0);
-    MemStats(&stats,0);
-    PrintStats("Alocacao 2",&stats);
+    MemStatistics(&stats,0);
+    PrintStats("Allocation #2",&stats);
     MemList(0);
 
     p3 = MemAlloc(10,0);
-    MemStats(&stats,0);
-    PrintStats("Alocacao 3",&stats);
+    MemStatistics(&stats,0);
+    PrintStats("Allocation #3",&stats);
     MemList(0);
 
     MemFree(p2);
-    MemStats(&stats,0);
-    PrintStats("Liberacao 2",&stats);
+    MemStatistics(&stats,0);
+    PrintStats("Free #2",&stats);
     MemList(0);
 
     MemFree(p3);
-    MemStats(&stats,0);
-    PrintStats("Liberacao 3",&stats);
+    MemStatistics(&stats,0);
+    PrintStats("Free #3",&stats);
     MemList(0);
 
     MemFree(p1);
-    MemStats(&stats,0);
-    PrintStats("Liberacao 3",&stats);
+    MemStatistics(&stats,0);
+    PrintStats("Free #3",&stats);
     MemList(0);
 
 }

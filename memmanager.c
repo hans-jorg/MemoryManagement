@@ -205,6 +205,9 @@ REGION *r;
 
     r->memleft += f->size;
 
+    /*
+     * Free-space head is higher up in memory than returnee.
+     */
     if (f < r->free ) {
         block = r->free;                    /* Old head */
         r->free = f;                        /* New head */
@@ -321,9 +324,7 @@ int    nelems;
         }
     }
 
-    /*
-     * Area not found
-     */
+    /* Area not found */
     return NULL;
 }
 
@@ -333,7 +334,7 @@ int    nelems;
  *
  *  @note   Delivers allocation information
  */
-void MemStatistics(MEMSTATS *stats, int region) {
+void MemStats( MEMSTATS *stats, int region ) {
 REGION *r;
 HEADER *p;
 const int MAXBYTES = 1000000;   /* to avoid the inclusion of other headers */
@@ -445,37 +446,37 @@ MEMSTATS stats;
     printf("Size of heap area    = %d\n",(int) BUFFERSIZE);
 
     MemInit(buffer,BUFFERSIZE);
-    MemStatistics(&stats,0);
+    MemStats(&stats,0);
     PrintStats("Inicialized",&stats);
     MemList(0);
 
     p1 = MemAlloc(10,0);
-    MemStatistics(&stats,0);
+    MemStats(&stats,0);
     PrintStats("Allocation #1",&stats);
     MemList(0);
 
     p2 = MemAlloc(10,0);
-    MemStatistics(&stats,0);
+    MemStats(&stats,0);
     PrintStats("Allocation #2",&stats);
     MemList(0);
 
     p3 = MemAlloc(10,0);
-    MemStatistics(&stats,0);
+    MemStats(&stats,0);
     PrintStats("Allocation #3",&stats);
     MemList(0);
 
     MemFree(p2);
-    MemStatistics(&stats,0);
+    MemStats(&stats,0);
     PrintStats("Free #2",&stats);
     MemList(0);
 
     MemFree(p3);
-    MemStatistics(&stats,0);
+    MemStats(&stats,0);
     PrintStats("Free #3",&stats);
     MemList(0);
 
     MemFree(p1);
-    MemStatistics(&stats,0);
+    MemStats(&stats,0);
     PrintStats("Free #3",&stats);
     MemList(0);
 

@@ -1,9 +1,26 @@
-//Listing 1  CALLOC.C.
-
-/*
- * Produced by Programming ARTS
- * 8/18/88
- * Programmers: Les Aldridge, Travis I. Seay
+/**
+ *  @file   memmanager.c
+ *
+ * @brief   Memory Allocation for C
+ *
+ *  @note   Mentioned in Memory Allocation in C in Embedded Systems Programming, Aug. 89.
+ *          https://www.embedded.com/memory-allocation-in-c/
+ *
+ *  @note   Original produced by Programming ARTS (8/18/88)
+ *          Programmers: Les Aldridge, Travis I. Seay
+ *
+ *  @note   Updated to C89/C99
+ *          Added doxygen documentation
+ *          Name changed
+ *              free        ->      MemFree
+ *              malloc      ->      MemAlloc
+ *              i_alloc     ->      MemInit
+ *          All static variables are now initialized
+ *          Add regions for allocation
+ *
+ *  @author Les Aldridge, Travis I. Seay (original version)
+ *
+ *  @author Hans Schneebeli (updated version)
  */
 
 #ifndef NULL
@@ -11,7 +28,7 @@
 #endif
 
 typedef struct hdr {
-    struct hdr  *ptr;
+    struct hdr      *ptr;
     unsigned int    size;
 } HEADER;
 
@@ -25,11 +42,18 @@ extern void warm_boot(char *str);
 static HEADER   *frhd;      /* pointer to free list */
 static short    memleft;    /* memory left */
 
-void MemFree(void *ap) {
 
-    /*  Return memory to free list. Where possible, make contiguous blocks of free memory.
-     * (Assumes that 0 is not a valid address for allocation. Also, i_alloc() must be called
-     * prior to using either free() or malloc(); otherwise, the free list will be null.) */
+/**
+ *  @brief  MemFree
+ *
+ *  @note   Return memory to free list.
+ *          Where possible, make contiguous blocks of free memory.
+ *          Assumes that 0 is not a valid address for allocation. Also,
+ *          MemInit() must be called prior to using either MemFree() or MemAlloc();
+ *          otherwise, the free list will be null.
+ */
+
+void MemFree(void *ap) {
 
     HEADER *nxt, *prev, *f;
     f = (HEADER *)ap - 1;   /* Point to header of block being returned. */
@@ -94,14 +118,22 @@ void MemFree(void *ap) {
     return;
 }
 
+/**
+ *  @brief  MemAlloc
+ *
+ *  @note   Returns a pointer to an allocate memory block if found.
+ *          Otherwise, returns NULL
+ *
+ *  @note
+ *
+ */
+
 void *MemAlloc(int nbytes) {  /* bytes to allocate */
 HEADER *nxt, *prev;
 int         nunits;
 nunits = (nbytes+sizeof(HEADER)-1) / sizeof(HEADER) + 1;
 
-    /*  Change that divide to a shift (for speed) only if the compiler doesn't do it for you,
-     * you don't require portability, and you know that sizeof(HEADER) is a power of two.
-     * Allocate the space requested plus space for the header of the block. Search the free-
+    /* Allocate the space requested plus space for the header of the block. Search the free-
      * space queue for a block that's large enough. If block is larger than needed, break into
      * two pieces and allocate the portion higher up in memory. Otherwise, just allocate the
      * entire block. */
@@ -130,10 +162,34 @@ nunits = (nbytes+sizeof(HEADER)-1) / sizeof(HEADER) + 1;
     return(NULL);
 }
 
+/**
+ *  @brief  MemInit
+ *
+ *  @note   Initializes heap info
+ *
+ *  @note   There are two versions. A version without parameters, that uses
+ *          symbols defined by the linker. Another one, with explicit parameters.
+ *          The preprocessor symbol MEM_LINKERINIT chooses one
+ *
+ *  @note   The area must be word aligned
+ */
+
+#ifdef MEM_LINKERINIT
 void MemInit(void) {
 
-    frhd = &_heapstart;     /* Initialize the allocator. */
+    /* Initialize the free list */
+    frhd = &_heapstart;
     frhd->ptr = NULL;
     frhd->size = ((char *)&_heapend - (char *)&_heapstart) / sizeof(HEADER);
     memleft = frhd->size;   /* initial size in four-byte units */
 }
+#else
+void MemInit(void *area, int size) {
+
+    /* Initialize the free list */
+    frhd = area;
+    frhd->ptr = NULL;
+    frhd->size = size / sizeof(HEADER);
+    memleft = frhd->size;   /* initial size in four-byte units */
+}
+#endif

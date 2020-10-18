@@ -32,16 +32,26 @@ typedef struct hdr {
     unsigned int    size;
 } HEADER;
 
-/*  Defined in the linker file. _heapstart is the first byte allocated to the heap;
- * _heapend is the last. */
 
-extern HEADER _heapstart, _heapend;
+#ifdef MEM_LINKERINIT
+/*  Symbols defined in the linker script
+ * _heapstart and _heapend must be at the first and last byte of the heap, respectively */
+extern HEADER _heapstart;       /*!< first byte allocated to the heap */
+extern HEADER _heapend;         /*!< last byte allocated to the heap */
+#endif
 
-extern void warm_boot(char *str);
+/*  Must be initialized in MemInit to point to first and last byte
+ * of heap, respectively */
+static HEADER *heapstart;       /*!< first byte allocated to the heap */
+static HEADER *heapend;         /*!< last byte allocated to the heap */
 
+/**
+ *  @brief  Free list
+ */
+///@{}
 static HEADER   *frhd;      /* pointer to free list */
 static short    memleft;    /* memory left */
-
+///@}
 
 /**
  *  @brief  MemFree
@@ -157,8 +167,6 @@ nunits = (nbytes+sizeof(HEADER)-1) / sizeof(HEADER) + 1;
         }
     }
 
-    /* This function that explains what catastrophe befell us before resetting the system. */
-    warm_boot("Allocation Failed!");
     return(NULL);
 }
 
@@ -186,6 +194,8 @@ void MemInit(void) {
 #else
 void MemInit(void *area, int size) {
 
+    heapstart = (HEADER *) area;
+    heapend   = (HEADER *) ((char *) area + size - 1);
     /* Initialize the free list */
     frhd = area;
     frhd->ptr = NULL;
@@ -193,3 +203,130 @@ void MemInit(void *area, int size) {
     memleft = frhd->size;   /* initial size in four-byte units */
 }
 #endif
+
+
+/**
+ *  @brief  Data structure for allocation statistics
+ */
+
+struct MemStats {
+    int freebytes;
+    int usedbytes;
+    int freeblocks;
+    int usedblocks;
+    int memleft;
+#if 0
+    // Not yet
+    int largestused;
+    int smallestused;
+    int largestfree;
+    int smallestfree;
+#endif
+};
+
+
+/**
+ *  @brief  MemStats
+ *
+ *  @note   Delivers allocation information
+ */
+void MemStats(struct MemStats *stats) {
+HEADER *p;
+
+    stats->memleft     = memleft;
+    stats->freeblocks  = 0;
+    stats->freebytes   = 0;
+    stats->usedblocks  = 0;
+    stats->usedbytes   = 0;
+
+    for(p=frhd; p; p=p->ptr) {
+        stats->freeblocks++;
+        stats->freebytes += p->size*sizeof(HEADER);
+    }
+
+    for(p=heapstart; (p < heapend)&&(p->size>0); p=p+p->size) {
+        stats->usedblocks++;
+        stats->usedbytes += p->size*sizeof(HEADER);
+    }
+    // Counted in the last loop
+    stats->usedblocks -= stats->freeblocks;
+    stats->usedbytes  -= stats->freebytes;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////
+#define TEST
+
+#ifdef TEST
+#include <stdio.h>
+
+/**
+ *  @brief  Memory List
+ *
+ *  @note   List all memory blocks, including size and status
+ *
+ */
+void MemList() {
+int i;
+HEADER *p;
+
+    for(i=0,p=heapstart;(p<heapend)&&(p->size>0);i++,p=p+p->size) {
+        printf("B%02d : %d @%p (next=%p)\n",i,
+                    (int) (p->size*sizeof(HEADER)),p,p->ptr);
+    }
+    putchar('\n');
+}
+
+#define PRINTSTATS(MSG,STATS)  \
+            do { \
+                puts(MSG); \
+                MemStats(&STATS); \
+                printf("Free blocks      = %d\n",STATS.freeblocks);\
+                printf("Free bytes       = %d\n",STATS.freebytes);\
+                printf("Used blocks      = %d\n",STATS.usedblocks);\
+                printf("Used bytes       = %d\n",STATS.usedbytes);\
+                printf("Memory left      = %d\n",(int) (STATS.memleft*sizeof(HEADER)));\
+            } while(0)
+
+
+#define BUFFERSIZE 160
+static int buffer[BUFFERSIZE/sizeof(int)];
+
+
+int main(void) {
+char *p1,*p2,*p3;
+struct MemStats stats;
+
+    printf("Size of element HEADER = %lu\n",sizeof(HEADER));
+
+    MemInit(buffer,BUFFERSIZE);
+    PRINTSTATS("Inicializado",stats);
+    MemList();
+
+    p1 = MemAlloc(10);
+    PRINTSTATS("Alocacao 1",stats);
+    MemList();
+
+    p2 = MemAlloc(10);
+    PRINTSTATS("Alocacao 2",stats);
+    MemList();
+
+    p3 = MemAlloc(10);
+    PRINTSTATS("Alocacao 3",stats);
+    MemList();
+
+    MemFree(p2);
+    PRINTSTATS("Liberacao 2",stats);
+    MemList();
+
+    MemFree(p3);
+    PRINTSTATS("Liberacao 3",stats);
+    MemList();
+
+    MemFree(p1);
+    PRINTSTATS("Liberacao 3",stats);
+    MemList();
+
+}
+#endif
+

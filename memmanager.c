@@ -18,6 +18,9 @@
  *          All static variables are now initialized
  *          Add regions for allocation
  *
+ *  @note   Header could be smaller for used blocks because the next pointer is only
+ *          used for free blocks.
+ *
  *  @author Les Aldridge, Travis I. Seay (original version)
  *
  *  @author Hans Schneebeli (updated version)
@@ -34,6 +37,8 @@
  *  @brief  header structure for each block
  *
  *  @note   next points to the next free block, otherwise it is NULL
+ *
+ *  @note   Using bit fields. It will later be used in an embedded system
  */
 typedef struct header {
     struct header  *next;
@@ -157,6 +162,18 @@ void MemInit(void *area, int size) {
  *          Where possible, make contiguous blocks of free memory.
  *          Assumes that 0 is not a valid address for allocation. Also,
  *          MemInit() must be called prior to using either MemFree() or MemAlloc();
+ *
+ *  @note   There are 4 case to consider:
+ *
+ *   Previous |  Next     | Action
+ *   ---------|-----------|--------------------------
+ *    Busy    |  Busy     | Just add to free list
+ *    Free    |  Busy     | Add size to the previous one
+ *    Busy    |  Free     | Add size of the next one, remove it from list, add this to list
+ *    Free    |  Free     | Add size of the next one and this one to previous,
+ *            |           | remove the next one from free list
+ *
+ *  There are the limit cases to consider, start and end of area
  */
 void MemFree(void *p) {
 HEADER *block, *prev, *f;
@@ -179,26 +196,14 @@ REGION *r;
 
     r->memleft += f->size;
 
-    /*
-     * There are 4 case to consider:
-     *   Previous |  Next
-     *    Busy    |  Busy     : Just add to free list
-     *    Free    |  Busy     : Add size to the previous one
-     *    Busy    |  Free     : Add size of the next one, remove it from list, add this to list
-     *    Free    |  Free     : Add size of the next one and this one to previous,
-     *                          remove the next one from free list
-     *
-     *  The are the limit cases to consider, start and end of area
-     */
     if (f < r->free ) {
-        puts("Por aqui");
-        block = r->free;                 /* Old head */
-        r->free = f;                     /* New head */
-        prev = f + f->size;             /* Right after new head */
+        block = r->free;                    /* Old head */
+        r->free = f;                        /* New head */
+        prev = f + f->size;                 /* Right after new head */
 
-        if (prev == block) {            /* Old and new are contiguous. */
+        if (prev == block) {                /* Old and new are contiguous. */
             f->size += block->size;
-            f->next = block->next;         /* Form one block. */
+            f->next = block->next;          /* Form one block. */
         } else {
             f->next = block;
         }
@@ -258,7 +263,13 @@ REGION *r;
  *  @note   Returns a pointer to an allocate memory block if found.
  *          Otherwise, returns NULL
  *
- *  @note
+ *  @note   It uses a first fit algorithm
+ *
+ *  @note   Allocate the space requested plus space for the header of the block.
+ *          Search the free-space queue for a block that's large enough.
+ *          If block is larger than needed, break into two pieces
+ *          and allocate the portion higher up in memory.
+ *          Otherwise, just allocate the entire block.
  *
  */
 void *MemAlloc(int nb, int region) {
@@ -275,13 +286,6 @@ int    nelems;
 
     r = &Regions[region];
 
-    /*
-     * Allocate the space requested plus space for the header of the block.
-     * Search the free-space queue for a block that's large enough.
-     * If block is larger than needed, break into two pieces
-     * and allocate the portion higher up in memory.
-     * Otherwise, just allocate the entire block.
-     */
     for (prev=NULL,block=r->free; block!=NULL; block = block->next) {
         /* First fit */
         if ( nelems <= block->size ) {        /* Big enough */
@@ -323,6 +327,7 @@ int    nelems;
 void MemStats(struct MemStats *stats, int region) {
 REGION *r;
 HEADER *p;
+const int MAXBYTES = 1000000;   /* to avoid the inclusion of other headers */
 
     r = &Regions[region];
 
@@ -332,16 +337,16 @@ HEADER *p;
     stats->usedblocks  = 0;
     stats->usedbytes   = 0;
     stats->largestused = 0;
-    stats->smallestused= 1000000;
+    stats->smallestused= MAXBYTES;
     stats->largestfree = 0;
-    stats->smallestfree= 1000000;
+    stats->smallestfree= MAXBYTES;
 
     if( !r->free )
         return;
 
     for(p=r->free;p;p=p->next) {
         stats->freeblocks++;
-        stats->freebytes += p->size*sizeof(HEADER);
+        stats->freebytes += p->size;
         if( p->size > stats->largestfree )
             stats->largestfree = p->size;
         if( p->size < stats->smallestfree )
@@ -351,13 +356,27 @@ HEADER *p;
     for(p=r->start;(p < r->end)&&(p->size>0);p=p+p->size) {
         if( p->used ) {
             stats->usedblocks++;
-            stats->usedbytes += p->size*sizeof(HEADER);
+            stats->usedbytes += p->size;
             if( p->size > stats->largestused )
                 stats->largestused = p->size;
             if( p->size < stats->smallestused )
                 stats->smallestused = p->size;
         }
     }
+    // To avoid "strange" numbers on output
+    if( stats->smallestfree == MAXBYTES )
+        stats->smallestfree = 0;
+    if( stats->smallestused == MAXBYTES )
+        stats->smallestused = 0;
+    // correct units
+    stats->freebytes    *= sizeof(HEADER);
+    stats->usedbytes    *= sizeof(HEADER);
+    stats->largestfree  *= sizeof(HEADER);
+    stats->largestused  *= sizeof(HEADER);
+    stats->smallestfree *= sizeof(HEADER);
+    stats->smallestused *= sizeof(HEADER);
+    stats->memleft      *= sizeof(HEADER);
+
 }
 
 #if defined(DEBUG) || defined(TEST)
@@ -389,54 +408,66 @@ REGION *r;
 #ifdef TEST
 #include <stdio.h>
 
-#define PRINTSTATS(MSG,STATS)  \
-            do { \
-                puts(MSG); \
-                MemStats(&STATS,0); \
-                printf("Free blocks      = %d\n",STATS.freeblocks);\
-                printf("Free bytes       = %d\n",STATS.freebytes);\
-                printf("Used blocks      = %d\n",STATS.usedblocks);\
-                printf("Used bytes       = %d\n",STATS.usedbytes);\
-                printf("Memory left      = %d\n",(int) (STATS.memleft*sizeof(HEADER)));\
-            } while(0)
+void PrintStats(char *msg, struct MemStats *stats ) {
 
+    puts(msg);
+    printf("Free blocks      = %d\n",stats->freeblocks);
+    printf("Free bytes       = %d\n",stats->freebytes);
+    printf("Smallest free    = %d\n",stats->smallestfree);
+    printf("Largest free     = %d\n",stats->largestfree);
+    printf("Used blocks      = %d\n",stats->usedblocks);
+    printf("Used bytes       = %d\n",stats->usedbytes);
+    printf("Smallest used    = %d\n",stats->smallestused);
+    printf("Largest used     = %d\n",stats->largestused);
+    printf("Memory left      = %d\n",stats->memleft);
+
+}
 
 #define BUFFERSIZE 160
-static int buffer[BUFFERSIZE/sizeof(int)];
+
+static int buffer[(BUFFERSIZE+sizeof(int)-1)/sizeof(int)];
 
 
 int main(void) {
 char *p1,*p2,*p3;
 struct MemStats stats;
 
-    printf("Size of element HEADER = %lu\n",sizeof(HEADER));
+    printf("Size of element HEADER = %d\n",(int) sizeof(HEADER));
+    printf("Size of heap area      = %d\n",(int) BUFFERSIZE);
 
     MemInit(buffer,BUFFERSIZE);
-    PRINTSTATS("Inicializado",stats);
+    MemStats(&stats,0);
+    PrintStats("Inicializado",&stats);
     MemList(0);
 
     p1 = MemAlloc(10,0);
-    PRINTSTATS("Alocacao 1",stats);
+    MemStats(&stats,0);
+    PrintStats("Alocacao 1",&stats);
     MemList(0);
 
     p2 = MemAlloc(10,0);
-    PRINTSTATS("Alocacao 2",stats);
+    MemStats(&stats,0);
+    PrintStats("Alocacao 2",&stats);
     MemList(0);
 
     p3 = MemAlloc(10,0);
-    PRINTSTATS("Alocacao 3",stats);
+    MemStats(&stats,0);
+    PrintStats("Alocacao 3",&stats);
     MemList(0);
 
     MemFree(p2);
-    PRINTSTATS("Liberacao 2",stats);
+    MemStats(&stats,0);
+    PrintStats("Liberacao 2",&stats);
     MemList(0);
 
     MemFree(p3);
-    PRINTSTATS("Liberacao 3",stats);
+    MemStats(&stats,0);
+    PrintStats("Liberacao 3",&stats);
     MemList(0);
 
     MemFree(p1);
-    PRINTSTATS("Liberacao 3",stats);
+    MemStats(&stats,0);
+    PrintStats("Liberacao 3",&stats);
     MemList(0);
 
 }

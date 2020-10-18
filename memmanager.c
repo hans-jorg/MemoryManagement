@@ -86,17 +86,17 @@ typedef struct memstats {
     int smallestused;                   ///< Smalles used block
     int largestfree;                    ///< Largest free block
     int smallestfree;                   ///< Smalles free block
-} MemStats;
+} MEMSTATS;
 
 /**
  *  @brief  Function prototypes
  */
 
-void MemAddRegion(int region, void *area, int size);
-void MemInit(void *area, int size);
-void MemFree(void *p);
-void *MemAlloc(int nb, int index);
-void MemStatistics( MemStats *stats, int region);
+void MemAddRegion( int region, void *area, int size );
+void MemInit( void *area, int size) ;
+void MemFree( void *p );
+void *MemAlloc( int nb, int index );
+void MemStats( MEMSTATS *stats, int region );
 
 
 /**
@@ -333,7 +333,7 @@ int    nelems;
  *
  *  @note   Delivers allocation information
  */
-void MemStatistics(MemStats *stats, int region) {
+void MemStatistics(MEMSTATS *stats, int region) {
 REGION *r;
 HEADER *p;
 const int MAXBYTES = 1000000;   /* to avoid the inclusion of other headers */
@@ -417,7 +417,7 @@ REGION *r;
 #ifdef TEST
 #include <stdio.h>
 
-void PrintStats(char *msg, MemStats *stats ) {
+void PrintStats(char *msg, MEMSTATS *stats ) {
 
     puts(msg);
     printf("Free blocks      = %d\n",stats->freeblocks);
@@ -439,7 +439,7 @@ static int buffer[(BUFFERSIZE+sizeof(int)-1)/sizeof(int)];
 
 int main(void) {
 char *p1,*p2,*p3;
-MemStats stats;
+MEMSTATS stats;
 
     printf("Size of block HEADER = %d\n",(int) sizeof(HEADER));
     printf("Size of heap area    = %d\n",(int) BUFFERSIZE);

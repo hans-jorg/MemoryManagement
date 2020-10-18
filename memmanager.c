@@ -26,13 +26,22 @@
  *  @author Hans Schneebeli (updated version)
  */
 
+/**
+ *  @brief  NULL Pointer
+ *
+ *  @note   To avoid use of additional headers. This will be used on embedded systems
+ */
+///@{
 #ifndef NULL
 #define NULL (0)
 #endif
+///@}
 
+/// Include stdio.h only for testing or debugging
 #if defined(DEBUG) || defined(TEST)
 #include <stdio.h>
 #endif
+
 /**
  *  @brief  header structure for each block
  *
@@ -41,12 +50,12 @@
  *  @note   Using bit fields. It will later be used in an embedded system
  */
 typedef struct header {
-    unsigned        used:1;             // 1 bit for used/free flag
-    unsigned        region:2;           // 2 bits for region
-    unsigned        size:29;            // 29 bits for size (=512 MBytes)
+    unsigned        used:1;             ///< 1 bit for used/free flag
+    unsigned        region:2;           ///< 2 bits for region
+    unsigned        size:29;            ///< 29 bits for size (=512 MBytes)
     union {
-        struct header  *next;
-        int             area[1];        // Place marker
+        struct header  *next;           ///< Next free block
+        int             area[1];        ///< Place marker
     };
 } HEADER;
 
@@ -57,14 +66,10 @@ typedef struct header {
  */
 
 typedef struct region {
-    HEADER  *start;
-    HEADER  *end;
-    HEADER  *free;
-    int     usedblocks;
-    int     usedbytes;
-    int     freeblocks;
-    int     freebytes;
-    int     memleft;
+    HEADER  *start;                     ///< Start address of this heap
+    HEADER  *end;                       ///< End address of this heap
+    HEADER  *free;                      ///< Pointer to first free block (Free list)
+    int     memleft;                    ///< Free area in sizeof(HEADER) units
 } REGION;
 
 /**
@@ -72,15 +77,15 @@ typedef struct region {
  */
 
 typedef struct memstats {
-    int freebytes;
-    int usedbytes;
-    int freeblocks;
-    int usedblocks;
-    int memleft;
-    int largestused;
-    int smallestused;
-    int largestfree;
-    int smallestfree;
+    int freebytes;                      ///< Size (in bytes) of total free area
+    int usedbytes;                      ///< Size (in bytes) of total used area
+    int freeblocks;                     ///< Number of free blocks
+    int usedblocks;                     ///< Number of used blocks
+    int memleft;                        ///< Should be the same of freebytes
+    int largestused;                    ///< Largest used block
+    int smallestused;                   ///< Smalles used block
+    int largestfree;                    ///< Largest free block
+    int smallestfree;                   ///< Smalles free block
 } MemStats;
 
 /**
@@ -168,13 +173,14 @@ void MemInit(void *area, int size) {
  *
  *  @note   There are 4 case to consider:
  *
- *   Previous |  Next     | Action
- *   ---------|-----------|--------------------------
- *    Busy    |  Busy     | Just add to free list
- *    Free    |  Busy     | Add size to the previous one
- *    Busy    |  Free     | Add size of the next one, remove it from list, add this to list
- *    Free    |  Free     | Add size of the next one and this one to previous,
- *            |           | remove the next one from free list
+ *  Previous |  Next  | Action
+ *  ---------|--------|--------------------------
+ *   Busy    |  Busy  | Just add this block to free list
+ *   Free    |  Busy  | Add size to the previous block
+ *   Busy    |  Free  | Add size of the next block, add this block to list
+ *   Free    |  Free  | Add size of the next block and combine both to previous one
+ *
+ *  Attention: Do not forget the remove the combined blocks from free list
  *
  *  There are the limit cases to consider, start and end of area
  */
@@ -371,7 +377,7 @@ const int MAXBYTES = 1000000;   /* to avoid the inclusion of other headers */
         stats->smallestfree = 0;
     if( stats->smallestused == MAXBYTES )
         stats->smallestused = 0;
-    // correct units
+    // To report sizes in bytes
     stats->freebytes    *= sizeof(HEADER);
     stats->usedbytes    *= sizeof(HEADER);
     stats->largestfree  *= sizeof(HEADER);

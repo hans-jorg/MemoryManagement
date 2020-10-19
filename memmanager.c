@@ -28,6 +28,8 @@
 
 #include <stdint.h>
 
+#include "memmanager.h"
+
 /**
  *  @brief  NULL Pointer
  *
@@ -82,40 +84,13 @@ typedef struct region {
 } REGION;
 
 /**
- *  @brief  Data structure for allocation statistics
- */
-
-typedef struct memstats {
-    uint32_t freebytes;                 ///< Size (in bytes) of total free area
-    uint32_t usedbytes;                 ///< Size (in bytes) of total used area
-    uint32_t freeblocks;                ///< Number of free blocks
-    uint32_t usedblocks;                ///< Number of used blocks
-    uint32_t memleft;                   ///< Should be the same of freebytes
-    uint32_t largestused;               ///< Largest used block
-    uint32_t smallestused;              ///< Smalles used block
-    uint32_t largestfree;               ///< Largest free block
-    uint32_t smallestfree;              ///< Smalles free block
-} MEMSTATS;
-
-/**
- *  @brief  Function prototypes
- */
-
-void MemAddRegion( uint32_t region, void *area, uint32_t size );
-void MemInit( void *area, uint32_t size) ;
-void MemFree( void *p );
-void *MemAlloc( uint32_t nb, uint32_t index );
-void MemStats( MEMSTATS *stats, uint32_t region );
-
-
-/**
  *  @brief  Region definition
  *
  *  @note   Heap information loaded by MemInit
  *
  *  @note   To change the number of regions, the region field in HEADER must be changed too
  */
-REGION Regions[4] = {
+static REGION Regions[4] = {
     { .start = 0, .end = 0 },
     { .start = 0, .end = 0 },
     { .start = 0, .end = 0 },

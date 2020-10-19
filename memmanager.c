@@ -248,7 +248,8 @@ REGION *r;
      */
 
     block = r->free;
-    for (block=r->free; block && block < f; prev=block,block=block->next) {
+    prev = NULL;
+    while ( block && f > block  ) {
         if (block+block->size == f) {
             block->size += f->size;     /* They're contiguous. */
             f = block + block->size;     /* Form one block. */
@@ -265,6 +266,8 @@ REGION *r;
             }
             return;
         }
+        prev=block;
+        block=block->next;
     }
 
     /*

@@ -86,15 +86,15 @@ typedef struct region {
  */
 
 typedef struct memstats {
-    int32_t freebytes;                      ///< Size (in bytes) of total free area
-    int32_t usedbytes;                      ///< Size (in bytes) of total used area
-    int32_t freeblocks;                     ///< Number of free blocks
-    int32_t usedblocks;                     ///< Number of used blocks
-    int32_t memleft;                        ///< Should be the same of freebytes
-    int32_t largestused;                    ///< Largest used block
-    int32_t smallestused;                   ///< Smalles used block
-    int32_t largestfree;                    ///< Largest free block
-    int32_t smallestfree;                   ///< Smalles free block
+    uint32_t freebytes;                 ///< Size (in bytes) of total free area
+    uint32_t usedbytes;                 ///< Size (in bytes) of total used area
+    uint32_t freeblocks;                ///< Number of free blocks
+    uint32_t usedblocks;                ///< Number of used blocks
+    uint32_t memleft;                   ///< Should be the same of freebytes
+    uint32_t largestused;               ///< Largest used block
+    uint32_t smallestused;              ///< Smalles used block
+    uint32_t largestfree;               ///< Largest free block
+    uint32_t smallestfree;              ///< Smalles free block
 } MEMSTATS;
 
 /**
@@ -112,6 +112,8 @@ void MemStats( MEMSTATS *stats, uint32_t region );
  *  @brief  Region definition
  *
  *  @note   Heap information loaded by MemInit
+ *
+ *  @note   To change the number of regions, the region field in HEADER must be changed too
  */
 REGION Regions[4] = {
     { .start = 0, .end = 0 },
@@ -180,6 +182,8 @@ void MemInit(void *area, uint32_t size) {
  *          Assumes that 0 is not a valid address for allocation. Also,
  *          MemInit() must be called prior to using either MemFree() or MemAlloc();
  *
+ *  @note   The Free List is kept in crescent order of address
+ *
  *  @note   There are 4 case to consider:
  *
  *  Previous |  Next  | Action
@@ -194,7 +198,7 @@ void MemInit(void *area, uint32_t size) {
  *  There are the limit cases to consider, start and end of area
  */
 void MemFree(void *p) {
-HEADER *block, *prev, *f;
+HEADER *block, *prev, *f, *old, *nxt;
 REGION *r;
 
     if( !p )
@@ -215,18 +219,22 @@ REGION *r;
     r->memleft += f->size;
 
     /*
-     * Free-space head is higher up in memory than returnee.
+     * The Free list in kept in crescent order of address.
+     *
+     * Free-space head is higher up in memory than returnee. The returnee will
+     * be the new head
      */
     if (f < r->free ) {
-        block = r->free;                    /* Old head */
+        old = r->free;                    /* Old head */
         r->free = f;                        /* New head */
-        prev = f + f->size;                 /* Right after new head */
+        /* The only possibility is that the old head points to a contiguos block*/
+        nxt = f + f->size;                 /* Right after new head */
 
-        if (prev == block) {                /* Old and new are contiguous. */
-            f->size += block->size;
-            f->next = block->next;          /* Form one block. */
+        if (nxt == old) {                /* Old and new are contiguous. */
+            f->size += old->size;         /* Combine them    */
+            f->next = old->next;          /* forming one block. */
         } else {
-            f->next = block;
+            f->next = old;
         }
         f->used = 0;
         return;
@@ -278,6 +286,7 @@ REGION *r;
     return;
 }
 
+
 /**
  *  @brief  MemAlloc
  *
@@ -302,7 +311,7 @@ uint32_t    nelems;
     nelems = (nb+sizeof(HEADER)-1)/sizeof(HEADER) + 1;
 
 #ifdef DEBUG
-    printf("Allocating %d bytes (=%d elements)\n",nb,nelems);
+    printf("Allocating %u bytes (=%u elements)\n",nb,nelems);
 #endif
 
     r = &Regions[region];
@@ -414,7 +423,7 @@ REGION *r;
     r = &Regions[region];
 
     for(i=0,p=r->start;(p<r->end)&&(p->size>0);i++,p=p+p->size) {
-        printf("B%02d (%c): %u @%p (next=%p)\n",i,p->used?'U':'F',
+        printf("B%02u (%c): %u @%p (next=%p)\n",i,p->used?'U':'F',
                     (uint32_t) (p->size*sizeof(HEADER)),p,p->next);
     }
     putchar('\n');
@@ -430,15 +439,15 @@ REGION *r;
 void PrintStats(char *msg, MEMSTATS *stats ) {
 
     puts(msg);
-    printf("Free blocks      = %d\n",stats->freeblocks);
-    printf("Free bytes       = %d\n",stats->freebytes);
-    printf("Smallest free    = %d\n",stats->smallestfree);
-    printf("Largest free     = %d\n",stats->largestfree);
-    printf("Used blocks      = %d\n",stats->usedblocks);
-    printf("Used bytes       = %d\n",stats->usedbytes);
-    printf("Smallest used    = %d\n",stats->smallestused);
-    printf("Largest used     = %d\n",stats->largestused);
-    printf("Memory left      = %d\n",stats->memleft);
+    printf("Free blocks      = %u\n",stats->freeblocks);
+    printf("Free bytes       = %u\n",stats->freebytes);
+    printf("Smallest free    = %u\n",stats->smallestfree);
+    printf("Largest free     = %u\n",stats->largestfree);
+    printf("Used blocks      = %u\n",stats->usedblocks);
+    printf("Used bytes       = %u\n",stats->usedbytes);
+    printf("Smallest used    = %u\n",stats->smallestused);
+    printf("Largest used     = %u\n",stats->largestused);
+    printf("Memory left      = %u\n",stats->memleft);
 
 }
 

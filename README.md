@@ -19,6 +19,7 @@ The following modification were done:
 * All static variables are now initialized
 * Added test routines
 * Add routines for statistics 
+* Changed all integer types to int32_t/uin32_t (stdint.h)
 
 References
 ----------

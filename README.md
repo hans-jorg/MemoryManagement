@@ -6,7 +6,7 @@ Introduction
 ------------
 
 
-Based on Memory Allocation in C in Embedded Systems Programming, Aug. 89.
+Based on "Memory Allocation in C" in the August, 1989 issue of "Embedded Systems Programming".
 
 The following modification were done:
 
@@ -18,8 +18,8 @@ The following modification were done:
   * i_alloc     ->      MemInit
 * All static variables are now initialized
 * Added test routines
-* Add routines for statistics 
-* Changed all integer types to int32_t/uin32_t (stdint.h)
+* Added routines for statistics 
+* Changed all integer types to int32_t/uint32_t (stdint.h)
 
 References
 ----------

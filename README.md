@@ -20,6 +20,7 @@ The following modification were done:
 * Added test routines
 * Added routines for statistics 
 * Changed all integer types to int32_t/uint32_t (stdint.h)
+* Added multiple regions (pools)
 
 References
 ----------
